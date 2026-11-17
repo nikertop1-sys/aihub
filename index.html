@@ -1,0 +1,308 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0a0818">
+<title>AI HUB</title>
+<!--
+FIRESTORE RULES (вставьте в Firebase → Firestore → Rules):
+rules_version='2';service cloud.firestore{match /databases/{d}/documents{
+ function role(){return get(/databases/$(d)/documents/users/$(request.auth.uid)).data.role}
+ match /{c}/{id}{
+  allow read:if request.auth!=null&&c in['news','design','videos','lessons','meta'];
+  allow write:if c in['news','design','videos','lessons','meta']&&request.auth!=null&&role() in['owner','admin']}
+ match /users/{u}{
+  allow read:if request.auth.uid==u||role() in['owner','admin'];
+  allow create:if request.auth.uid==u&&request.resource.data.role=='user';
+  allow update:if role()=='owner'}
+ match /users/{u}/{s}/{i}{allow read,write:if request.auth.uid==u}}}
+OWNER: после своей регистрации вручную поставьте role="owner" в документе users/<ваш uid> через консоль Firebase.
+КОЛЛЕКЦИИ (поля): news{title,summary,url,source,image,category,kind:'ai'|'claude',date}
+ design{title,summary,url,source,image,category,date} videos{title,channel,views,url,thumb,level,topic,date}
+ lessons{title,category,level,goal,theory,examples[],steps[],task,questions[],sources[],outdated,date} meta/status{updated}
+-->
+<style>
+:root{--bg:#0a0818;--p:#8b5cf6;--p2:#a78bfa;--tx:#f5f3ff;--mu:#9a93b8;--bd:rgba(255,255,255,.1);--gl:rgba(255,255,255,.05)}
+*{box-sizing:border-box;margin:0}
+body{font:15px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;color:var(--tx);min-height:100vh;background:radial-gradient(900px 520px at 90% -5%,#6d28d9bb,transparent 60%),radial-gradient(700px 500px at 0 100%,#1e3a8a66,transparent 60%),var(--bg);background-attachment:fixed}
+button,input{font:inherit;color:inherit}
+a{color:var(--p2);text-decoration:none}
+:focus-visible{outline:2px solid var(--p2);outline-offset:2px}
+.sh{display:grid;grid-template-columns:250px 1fr;min-height:100vh}
+.sh.col{grid-template-columns:76px 1fr}
+aside{position:sticky;top:0;height:100vh;padding:20px 14px;background:rgba(13,10,30,.72);backdrop-filter:blur(20px);border-right:1px solid var(--bd);display:flex;flex-direction:column;gap:4px;overflow:auto}
+.logo{display:flex;align-items:center;gap:10px;font-weight:700;font-size:18px;margin:6px 8px 18px}
+.logo i{width:30px;height:30px;border-radius:9px;background:linear-gradient(135deg,#a78bfa,#6d28d9);flex:none}
+.ni{display:flex;gap:12px;align-items:center;padding:10px 12px;border-radius:12px;color:var(--mu);cursor:pointer;border:0;background:none;text-align:left;width:100%;transition:background .25s,color .25s}
+.ni:hover{background:var(--gl);color:var(--tx)}
+.ni.on{background:linear-gradient(90deg,#7c3aed,#6d28d9aa);color:#fff}
+.ni b{width:20px;text-align:center;font-weight:400;flex:none}
+.ni.sub{padding-left:30px;font-size:14px}
+.ni.hd{cursor:default;pointer-events:none}
+.sp{flex:1}
+.col .t{display:none}.col .ni.sub{padding-left:12px}
+main{padding:22px 30px 40px;min-width:0}
+.tb{display:flex;gap:12px;align-items:center;margin-bottom:24px}
+.sr{flex:1;max-width:520px;background:var(--gl);border:1px solid var(--bd);border-radius:14px;padding:11px 16px;outline:0}
+.sr:focus{border-color:var(--p)}
+#clk{color:var(--mu);font-size:13px;white-space:nowrap}
+.av{width:38px;height:38px;border-radius:50%;background:linear-gradient(135deg,#6d28d9,#475569);display:grid;place-items:center;font-weight:700;font-size:13px;flex:none}
+h1{font-size:clamp(28px,4vw,40px);line-height:1.15;letter-spacing:-.02em}
+h2{font-size:26px;margin-bottom:4px}
+h3{font-size:16px;line-height:1.35;margin:8px 0 6px}
+.mu{color:var(--mu);font-size:14px}
+.pg{margin-bottom:18px}
+.bento{display:grid;grid-template-columns:repeat(6,1fr);gap:16px;margin-top:26px}
+.c{grid-column:span 3}.s{grid-column:span 2}.w{grid-column:span 6}
+.gr{display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:16px}
+.card{position:relative;background:var(--gl);border:1px solid var(--bd);border-radius:20px;padding:18px;backdrop-filter:blur(14px);transition:transform .3s,border-color .3s,box-shadow .3s}
+.card:hover{transform:translateY(-3px);border-color:#8b5cf699;box-shadow:0 12px 40px #7c3aed33}
+.click{cursor:pointer}
+.card img{width:100%;aspect-ratio:16/9;object-fit:cover;border-radius:12px;margin-bottom:10px;background:#1a1530}
+.hd2{display:flex;align-items:center;gap:10px;font-weight:600}
+.ico{width:34px;height:34px;border-radius:50%;background:#7c3aed;display:grid;place-items:center}
+.ar{position:absolute;right:16px;bottom:14px;width:34px;height:34px;border-radius:50%;background:var(--gl);display:grid;place-items:center}
+.num{font-size:30px;font-weight:700}
+.mt{display:flex;justify-content:space-between;align-items:center}
+.tg{font-size:12px;background:#7c3aed33;color:var(--p2);padding:2px 10px;border-radius:20px}
+.ft{display:flex;justify-content:space-between;gap:10px;margin-top:12px;font-size:13px;flex-wrap:wrap}
+.fv{background:none;border:0;cursor:pointer;font-size:20px;color:var(--mu);transition:transform .2s,color .2s}
+.fv:active{transform:scale(.8)}.fv.on{color:#f472b6}
+.em{padding:40px 20px;text-align:center;color:var(--mu);border:1px dashed var(--bd);border-radius:20px}
+.cats{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:20px}
+.cat{padding:9px 20px;border:2px solid #2c2540;background:#14102a;color:#fff;font-size:.92rem;font-weight:700;cursor:pointer;border-radius:30px;transition:all .4s ease;position:relative;overflow:hidden;outline:0}
+.cat::after{content:"";position:absolute;inset:0;background:radial-gradient(circle,rgba(167,139,250,.35) 0%,rgba(167,139,250,0) 70%);transform:scale(0);transition:transform .5s ease}
+.cat:hover::after{transform:scale(4)}
+.cat:hover{border-color:#6d5fa8;background:#221a40;box-shadow:0 0 18px #7c3aed44}
+.cat.on{border-color:var(--p);color:var(--p2);box-shadow:0 0 14px #8b5cf666}
+.cat:active{transform:scale(.95)}
+.cat:disabled{opacity:.4;cursor:not-allowed}
+.cat:focus-visible{outline:2px solid var(--p2);outline-offset:2px}
+.mo{display:none}
+.bar{height:8px;border-radius:8px;background:var(--gl);overflow:hidden;margin:10px 0}.bar i{display:block;height:100%;background:linear-gradient(90deg,#8b5cf6,#a78bfa)}
+.ls ul{padding-left:20px;color:var(--mu)}.ls h4{margin:14px 0 4px;font-size:14px}.ls p{color:var(--mu)}
+.btn{padding:11px 22px;border-radius:12px;border:0;background:linear-gradient(90deg,#7c3aed,#6d28d9);color:#fff;font-weight:600;cursor:pointer;transition:transform .15s}
+.btn:active{transform:scale(.97)}.btn.g{background:var(--gl);border:1px solid var(--bd)}
+.au{min-height:100vh;display:grid;place-items:center;padding:20px}
+.au .card{width:min(420px,100%);padding:28px}
+.au input{width:100%;margin:6px 0;padding:12px 14px;border-radius:12px;border:1px solid var(--bd);background:rgba(0,0,0,.3);outline:0}
+.au input:focus{border-color:var(--p)}
+.au .btn{width:100%;margin-top:10px}
+.msg{color:#f9a8d4;font-size:14px;margin-top:10px}
+.ban{background:#7c3aed33;border:1px solid #7c3aed;border-radius:12px;padding:10px 14px;margin-bottom:18px;font-size:14px}
+.row{display:flex;justify-content:space-between;align-items:center;padding:12px 0;border-bottom:1px solid var(--bd);gap:10px}
+.bn{display:none;position:fixed;bottom:0;left:0;right:0;z-index:9;background:rgba(13,10,30,.92);backdrop-filter:blur(20px);border-top:1px solid var(--bd);justify-content:space-around;padding:6px 2px calc(6px + env(safe-area-inset-bottom))}
+.bn button{background:none;border:0;color:var(--mu);display:flex;flex-direction:column;align-items:center;font-size:11px;padding:6px 8px;min-width:56px;min-height:44px;cursor:pointer}
+.bn button b{font-size:19px;font-weight:400}.bn .on{color:var(--p2)}
+@keyframes in{from{opacity:0;transform:translateY(10px)}}
+#v{animation:in .45s both}
+@media(max-width:860px){
+ .sh,.sh.col{grid-template-columns:1fr}aside{display:none}.bn{display:flex}.mo{display:flex}
+ main{padding:16px 14px 96px}.c,.s{grid-column:span 6}.s{grid-column:span 2}.num{font-size:24px}
+ #clk{display:none}.gr{grid-template-columns:1fr}
+}
+@media(prefers-reduced-motion:reduce){*,#v{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script type="module">
+let initializeApp,getAuth,onAuthStateChanged,signInWithEmailAndPassword,createUserWithEmailAndPassword,sendPasswordResetEmail,sendEmailVerification,updateProfile,signOut,getFirestore,collection,getDocs,query,orderBy,limit,doc,setDoc,getDoc,deleteDoc;
+let loaded=false,why="";
+try{
+ const B="https://www.gstatic.com/firebasejs/10.12.2/";
+ const [m1,m2,m3]=await Promise.all([import(B+"firebase-app.js"),import(B+"firebase-auth.js"),import(B+"firebase-firestore.js")]);
+ ({initializeApp}=m1);
+ ({getAuth,onAuthStateChanged,signInWithEmailAndPassword,createUserWithEmailAndPassword,sendPasswordResetEmail,sendEmailVerification,updateProfile,signOut}=m2);
+ ({getFirestore,collection,getDocs,query,orderBy,limit,doc,setDoc,getDoc,deleteDoc}=m3);
+ loaded=true;
+}catch(e){why="Не удалось загрузить Firebase (нужен интернет и открытие файла в обычном браузере или на GitHub Pages): "+(e.message||e)}
+window.addEventListener("error",e=>{const a=document.getElementById("app");if(a&&!a.innerHTML.trim())a.innerHTML='<div style="padding:30px;color:#f9a8d4">Ошибка: '+String(e.message).replace(/</g,"&lt;")+'</div>'});
+
+/* === ВСТАВЬТЕ СЮДА КОНФИГ ИЗ FIREBASE (Project settings → Your apps → Web) === */
+const CFG={apiKey:"",authDomain:"",projectId:"",appId:""};
+/* ========================================================================== */
+
+const live=!!CFG.apiKey&&loaded;
+let auth,db;
+if(live){const a=initializeApp(CFG);auth=getAuth(a);db=getFirestore(a)}
+const S={user:live?null:{displayName:"Гость",email:"preview"},role:"user",route:"home",col:false,cat:{},q:"",
+ data:{news:[],design:[],videos:[],lessons:[]},favs:new Set(),done:new Set(),open:null,upd:null,mode:"in",msg:""};
+const $=s=>document.querySelector(s);
+const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const safe=u=>/^https?:\/\//.test(u||"")?u:"#";
+const dt=d=>d?(d.toDate?d.toDate():new Date(d)):null;
+const fmt=d=>{d=dt(d);return d&&!isNaN(d)?d.toLocaleDateString("ru-RU",{day:"numeric",month:"short",year:"numeric"}):""};
+const fmtT=d=>{d=dt(d);return d&&!isNaN(d)?d.toLocaleString("ru-RU"):"нет данных"};
+
+const NAV=[["home","Главная","⌂"],["news","AI News","◫"],["design","Design Inspiration","◎"],["","Claude","✦","hd"],
+ ["cnews","Claude News","•","sub"],["videos","Community Videos","•","sub"],["learn","AI Learning","•","sub"],
+ ["favs","Избранное","♡"],["search","Поиск","⌕"],["settings","Профиль и настройки","⚙"]];
+const BN=[["home","Главная","⌂"],["news","Новости","◫"],["cnews","Claude","✦"],["learn","Уроки","✎"],["settings","Профиль","☺"]];
+const CL=["cnews","videos","learn"];
+const CATS={news:["Все","Модели","Компании","Исследования","Инструменты","Законы"],
+ design:["Все","UI/UX","Web","Mobile","Dashboard","Typography","3D","Motion","Branding"],
+ cnews:["Все","Модели","Claude Code","API","Тарифы"],
+ videos:["Popular","Newest","Most Viewed","Beginner","Intermediate","Advanced","Claude Code","Prompt Engineering","API & Automation"],
+ learn:["Все","Beginner","Intermediate","Advanced"]};
+const TITLES={news:"AI News",design:"Design Inspiration",cnews:"Claude News",videos:"Community Videos",learn:"AI Learning",favs:"Избранное",search:"Поиск",settings:"Профиль и настройки"};
+
+/* ---------- данные ---------- */
+async function load(){
+ if(!live)return;
+ const g=async n=>{try{return(await getDocs(query(collection(db,n),orderBy("date","desc"),limit(80)))).docs.map(d=>({id:d.id,...d.data()}))}catch(e){console.warn(n,e.code||e);return[]}};
+ [S.data.news,S.data.design,S.data.videos,S.data.lessons]=await Promise.all(["news","design","videos","lessons"].map(g));
+ const u=S.user.uid;
+ try{
+  S.favs=new Set((await getDocs(collection(db,"users",u,"favs"))).docs.map(d=>d.id));
+  S.done=new Set((await getDocs(collection(db,"users",u,"progress"))).docs.map(d=>d.id));
+  const r=await getDoc(doc(db,"users",u));S.role=r.exists()?r.data().role||"user":"user";
+  const m=await getDoc(doc(db,"meta","status"));S.upd=m.exists()?m.data().updated:null;
+ }catch(e){console.warn(e.code||e)}
+}
+const vids=()=>S.data.videos.filter(v=>Number(v.views)>=10000);
+const cnews=()=>S.data.news.filter(n=>n.kind==="claude");
+const anews=()=>S.data.news.filter(n=>n.kind!=="claude");
+const empty=t=>`<div class="em">${live?"Пока пусто. "+t:"Режим предпросмотра: Firebase не подключён."}</div>`;
+
+/* ---------- карточки ---------- */
+const fv=(t,i)=>`<button class="fv ${S.favs.has(t+":"+i.id)?"on":""}" data-a="fav" data-k="${t}:${esc(i.id)}" aria-label="В избранное">♥</button>`;
+const link=i=>`<a href="${esc(safe(i.url))}" target="_blank" rel="noopener">Оригинал →</a>`;
+const nCard=(i,t="news")=>`<article class="card">${i.image?`<img src="${esc(safe(i.image))}" alt="" loading="lazy">`:""}<div class="mt"><span class="tg">${esc(i.category||"AI")}</span>${fv(t,i)}</div><h3>${esc(i.title)}</h3><p class="mu">${esc(i.summary)}</p><div class="ft"><span class="mu">${esc(i.source||"")} ${i.source&&i.date?"·":""} ${fmt(i.date)}</span>${link(i)}</div></article>`;
+const vCard=i=>`<article class="card">${i.thumb?`<img src="${esc(safe(i.thumb))}" alt="" loading="lazy">`:""}<div class="mt"><span class="tg">${esc(i.level||"Video")}</span>${fv("videos",i)}</div><h3>${esc(i.title)}</h3><div class="ft"><span class="mu">${esc(i.channel||"")} · ${Number(i.views).toLocaleString("ru-RU")} просмотров</span><a href="${esc(safe(i.url))}" target="_blank" rel="noopener">YouTube →</a></div></article>`;
+const list=v=>!v?"":Array.isArray(v)?`<ul>${v.map(x=>`<li>${esc(x)}</li>`).join("")}</ul>`:`<p>${esc(v)}</p>`;
+const lCard=i=>{const o=S.open===i.id,d=S.done.has(i.id);
+ return`<article class="card ls"><div class="mt"><span class="tg">${esc(i.level||"")} · ${esc(i.category||"")}</span>${fv("lessons",i)}</div>
+ <h3>${esc(i.title)} ${d?"✓":""}</h3>${i.outdated?`<p class="mu">⚠ Урок требует обновления</p>`:""}<p class="mu">${esc(i.goal)}</p>
+ ${o?`<h4>Теория</h4>${list(i.theory)}<h4>Примеры</h4>${list(i.examples)}<h4>Шаги</h4>${list(i.steps)}<h4>Задание</h4>${list(i.task)}<h4>Проверь себя</h4>${list(i.questions)}${i.sources&&i.sources.length?`<h4>Источники</h4><ul>${i.sources.map(s=>`<li><a href="${esc(safe(s))}" target="_blank" rel="noopener">${esc(s)}</a></li>`).join("")}</ul>`:""}`:""}
+ <div class="ft"><button class="btn g" data-a="open" data-id="${esc(i.id)}">${o?"Свернуть":"Открыть урок"}</button>${o?`<button class="btn" data-a="done" data-id="${esc(i.id)}">${d?"Отметить как непройденный":"Завершить"}</button>`:""}</div></article>`};
+const cats=k=>{const L=CATS[k],cur=S.cat[k]||L[0];return`<div class="cats">${L.map(c=>`<button class="cat ${cur===c?"on":""}" data-a="cat" data-k="${k}" data-v="${esc(c)}">${c}</button>`).join("")}</div>`};
+const head=(k,sub)=>`<div class="pg"><h2>${TITLES[k]}</h2><p class="mu">${sub}</p></div>${CL.includes(k)?`<div class="cats mo">${CL.map(r=>`<button class="cat ${r===k?"on":""}" data-a="go" data-r="${r}">${TITLES[r]}</button>`).join("")}</div>`:""}`;
+const byCat=(arr,k)=>{const c=S.cat[k]||"Все";return arr.filter(i=>c==="Все"||i.category===c)};
+const grid=(arr,fn,t)=>arr.length?`<div class="gr">${arr.map(fn).join("")}</div>`:empty(t);
+
+/* ---------- страницы ---------- */
+const V={
+home(){
+ const d=S.data,n=anews()[0],c=cnews()[0],v=vids()[0],l=d.lessons[0],ds=d.design[0];
+ const bc=(r,ic,t,it,hint,cls="c")=>`<div class="card click ${cls}" data-a="go" data-r="${r}" tabindex="0"><div class="hd2"><span class="ico">${ic}</span>${t}</div><h3>${it?esc(it.title):"Пока нет"}</h3><p class="mu" style="padding-right:44px">${it?esc(it.summary||it.channel||it.goal||""):hint}</p><span class="ar">→</span></div>`;
+ const h=new Date().getHours(),g=h<5?"Доброй ночи":h<12?"Доброе утро":h<18?"Добрый день":"Добрый вечер";
+ return`${live?"":`<div class="ban">${why?esc(why):"Режим предпросмотра: вставьте конфиг Firebase в начале скрипта, чтобы включить вход и данные."}</div>`}
+ <h1>${g}, ${esc(S.user.displayName||"друг")}!</h1><p class="mu" style="margin-top:6px;font-size:17px">Вот, что нового сегодня</p>
+ <div class="bento">
+  ${bc("news","⚡","Последние новости ИИ",n,"Лента пуста. Первые новости появятся после запуска сборщика.")}
+  ${bc("cnews","✦","Обновления Claude",c,"Пока нет. Источник: блог и документация Anthropic.")}
+  ${bc("videos","▶","Популярные видео",v,"Только видео от 10 000 просмотров.")}
+  ${bc("learn","✎","Новые уроки",l,"Уроки создаёт Claude API.")}
+  ${bc("design","◎","Дизайнерские идеи",ds,"Подборки работ появятся после запуска сборщика.","w")}
+  <div class="card s"><div class="mu">Новостей</div><div class="num">${d.news.length}</div></div>
+  <div class="card s"><div class="mu">Видео от 10 000</div><div class="num">${vids().length}</div></div>
+  <div class="card s"><div class="mu">Пройдено уроков</div><div class="num">${S.done.size}/${d.lessons.length}</div></div>
+  <div class="card w"><span class="mu">Последнее обновление данных: ${fmtT(S.upd)}</span></div>
+ </div>`},
+news(){return head("news","Мировые новости ИИ с переводом и кратким содержанием")+cats("news")+grid(byCat(anews(),"news"),i=>nCard(i),"Запустите сборщик новостей.")},
+design(){return head("design","Реальные работы из открытых источников")+cats("design")+grid(byCat(S.data.design,"design"),i=>nCard(i,"design"),"Запустите сборщик дизайна.")},
+cnews(){return head("cnews","Только Claude и Anthropic")+cats("cnews")+grid(byCat(cnews(),"cnews"),i=>nCard(i),"Запустите сборщик новостей Claude.")},
+videos(){
+ const f=S.cat.videos||"Popular";let a=vids();const now=Date.now();
+ if(["Beginner","Intermediate","Advanced"].includes(f))a=a.filter(v=>v.level===f);
+ else if(["Claude Code","Prompt Engineering","API & Automation"].includes(f))a=a.filter(v=>v.topic===f);
+ const age=v=>(now-(dt(v.date)||now))/864e5;
+ if(f==="Newest")a.sort((x,y)=>(dt(y.date)||0)-(dt(x.date)||0));
+ else if(f==="Popular")a.sort((x,y)=>y.views/(age(y)+2)-x.views/(age(x)+2));
+ else a.sort((x,y)=>y.views-x.views);
+ return head("videos","Видео сообщества: только от 10 000 просмотров")+cats("videos")+grid(a,vCard,"Запустите сборщик YouTube.")},
+learn(){
+ const L=S.data.lessons,c=S.cat.learn||"Все",a=L.filter(i=>c==="Все"||i.level===c),p=L.length?Math.round(S.done.size/L.length*100):0;
+ return head("learn","Уроки, созданные ИИ и проверенные перед публикацией")+`<div class="mu">Прогресс: ${S.done.size} из ${L.length}</div><div class="bar"><i style="width:${p}%"></i></div>`+cats("learn")+grid(a,lCard,"Запустите генератор уроков.")},
+favs(){
+ const T={news:"news",design:"design",videos:"videos",lessons:"lessons"},out=[];
+ S.favs.forEach(k=>{const[t,id]=k.split(":"),it=(S.data[t]||[]).find(x=>x.id===id);if(it)out.push(t==="videos"?vCard(it):t==="lessons"?lCard(it):nCard(it,t))});
+ return head("favs","Ваши сохранённые материалы")+(out.length?`<div class="gr">${out.join("")}</div>`:empty("Нажмите ♥ на карточке, чтобы сохранить."))},
+search(){return head("search","По новостям, дизайну, видео и урокам")+`<input class="sr" id="q" value="${esc(S.q)}" placeholder="Что ищете?" style="width:100%;max-width:none;margin-bottom:18px"><div id="res">${res()}</div>`},
+settings(){
+ const N=JSON.parse(localStorage.getItem("ahn")||'{"ai":true,"claude":true,"videos":true,"lessons":true}'),L={ai:"Новости ИИ",claude:"Обновления Claude",videos:"Новые видео",lessons:"Новые уроки"};
+ return head("settings","Аккаунт и уведомления")+`<div class="card" style="max-width:640px">
+ <div class="row"><span>Имя</span><b>${esc(S.user.displayName||"—")}</b></div>
+ <div class="row"><span>Email</span><b>${esc(S.user.email||"—")}</b></div>
+ <div class="row"><span>Роль</span><b>${esc(S.role.toUpperCase())}</b></div>
+ <div class="row"><span>Email подтверждён</span><b>${S.user.emailVerified?"да":"нет"}</b></div>
+ <h3 style="margin-top:18px">Уведомления</h3>
+ ${Object.keys(L).map(k=>`<label class="row"><span>${L[k]}</span><input type="checkbox" data-a="nt" data-k="${k}" ${N[k]?"checked":""}></label>`).join("")}
+ ${["owner","admin"].includes(S.role)?`<p class="mu" style="margin-top:14px">Права ${esc(S.role)}: источники, расписание и пользователи управляются в Firebase Console и Cloud Functions.</p>`:""}
+ ${live?`<button class="btn g" data-a="out" style="margin-top:18px">Выйти</button>`:""}</div>`}};
+
+function res(){
+ const q=S.q.trim().toLowerCase();if(!q)return`<div class="em">Введите запрос.</div>`;
+ const m=i=>(i.title+" "+(i.summary||"")+" "+(i.goal||"")+" "+(i.channel||"")).toLowerCase().includes(q),o=[];
+ S.data.news.filter(m).forEach(i=>o.push(nCard(i)));S.data.design.filter(m).forEach(i=>o.push(nCard(i,"design")));
+ vids().filter(m).forEach(i=>o.push(vCard(i)));S.data.lessons.filter(m).forEach(i=>o.push(lCard(i)));
+ return o.length?`<div class="gr">${o.join("")}</div>`:`<div class="em">Ничего не найдено.</div>`}
+
+/* ---------- отрисовка ---------- */
+const app=$("#app");
+const on=r=>S.route===r||(r==="settings"&&S.route==="settings");
+function draw(){
+ if(!S.user){
+  const m=S.mode;
+  app.innerHTML=`<div class="au"><form class="card" id="af"><div class="logo"><i></i>AI HUB</div>
+  <div class="cats"><button type="button" class="cat ${m==="in"?"on":""}" data-a="mode" data-v="in">Вход</button><button type="button" class="cat ${m==="up"?"on":""}" data-a="mode" data-v="up">Регистрация</button></div>
+  ${m==="up"?`<input name="name" placeholder="Имя пользователя" required autocomplete="username">`:""}
+  <input name="email" type="email" placeholder="Email" required autocomplete="email">
+  ${m!=="rs"?`<input name="pw" type="password" placeholder="Пароль" required autocomplete="${m==="up"?"new-password":"current-password"}">`:""}
+  ${m==="up"?`<input name="pw2" type="password" placeholder="Повторите пароль" required autocomplete="new-password">`:""}
+  <button class="btn" type="submit">${m==="in"?"Войти":m==="up"?"Создать аккаунт":"Сбросить пароль"}</button>
+  ${m==="in"?`<p class="mu" style="margin-top:14px;text-align:center"><a href="#" data-a="mode" data-v="rs">Забыли пароль?</a></p>`:m==="rs"?`<p class="mu" style="margin-top:14px;text-align:center"><a href="#" data-a="mode" data-v="in">Назад ко входу</a></p>`:""}
+  <p class="msg" role="status">${esc(S.msg)}</p></form></div>`;return}
+ const ni=NAV.map(([r,t,ic,c])=>`<button class="ni ${c||""} ${on(r)?"on":""}" ${r?`data-a="go" data-r="${r}"`:""}><b>${ic}</b><span class="t">${t}</span></button>`).join("");
+ app.innerHTML=`<div class="sh ${S.col?"col":""}"><aside><div class="logo"><i></i><span class="t">AI HUB</span></div>${ni}<div class="sp"></div><button class="ni" data-a="col" aria-label="Свернуть панель"><b>⇤</b><span class="t">Свернуть</span></button></aside>
+ <main><div class="tb"><input class="sr" id="gs" placeholder="Поиск по всем разделам…" value="${esc(S.q)}"><span id="clk"></span><div class="av" title="${esc(S.user.email)}">${esc((S.user.displayName||"?").slice(0,2).toUpperCase())}</div></div><section id="v"></section></main></div>
+ <nav class="bn">${BN.map(([r,t,ic])=>`<button class="${S.route===r||(r==="cnews"&&CL.includes(S.route))?"on":""}" data-a="go" data-r="${r}"><b>${ic}</b>${t}</button>`).join("")}</nav>`;
+ view();tick()}
+function view(){const v=$("#v");if(v)v.innerHTML=V[S.route]()}
+function tick(){const c=$("#clk");if(c)c.textContent=new Date().toLocaleString("ru-RU",{weekday:"short",day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"})}
+setInterval(tick,30000);
+
+/* ---------- события ---------- */
+document.addEventListener("click",async e=>{
+ const t=e.target.closest("[data-a]");if(!t)return;const a=t.dataset.a;
+ if(a==="go"){e.preventDefault();S.route=t.dataset.r;draw();scrollTo(0,0)}
+ else if(a==="cat"){S.cat[t.dataset.k]=t.dataset.v;view()}
+ else if(a==="col"){S.col=!S.col;draw()}
+ else if(a==="mode"){e.preventDefault();S.mode=t.dataset.v;S.msg="";draw()}
+ else if(a==="open"){S.open=S.open===t.dataset.id?null:t.dataset.id;view()}
+ else if(a==="out"){await signOut(auth)}
+ else if(a==="fav"||a==="done"){
+  const set=a==="fav"?S.favs:S.done,k=a==="fav"?t.dataset.k:t.dataset.id,has=set.has(k);
+  has?set.delete(k):set.add(k);view();
+  if(live)try{const r=doc(db,"users",S.user.uid,a==="fav"?"favs":"progress",k);has?await deleteDoc(r):await setDoc(r,{t:Date.now()})}catch(x){console.warn(x.code||x)}}
+});
+document.addEventListener("change",e=>{const t=e.target;if(t.dataset.a!=="nt")return;
+ const N=JSON.parse(localStorage.getItem("ahn")||'{"ai":true,"claude":true,"videos":true,"lessons":true}');N[t.dataset.k]=t.checked;localStorage.setItem("ahn",JSON.stringify(N))});
+document.addEventListener("input",e=>{
+ if(e.target.id==="q"){S.q=e.target.value;$("#res").innerHTML=res()}});
+document.addEventListener("keydown",e=>{
+ if(e.target.id==="gs"&&e.key==="Enter"){S.q=e.target.value;S.route="search";draw()}
+ if(e.key==="Enter"&&e.target.classList.contains("click"))e.target.click()});
+document.addEventListener("submit",async e=>{
+ e.preventDefault();const f=Object.fromEntries(new FormData(e.target));S.msg="";
+ try{
+  if(!live)throw Error("Firebase не настроен: заполните CFG в начале скрипта.");
+  if(S.mode==="in")await signInWithEmailAndPassword(auth,f.email,f.pw);
+  else if(S.mode==="up"){
+   if(f.pw!==f.pw2)throw Error("Пароли не совпадают.");
+   if(!/^(?=.*[A-Za-z])(?=.*\d).{8,}$/.test(f.pw))throw Error("Пароль: от 8 символов, буквы и цифры.");
+   const c=await createUserWithEmailAndPassword(auth,f.email,f.pw);
+   await updateProfile(c.user,{displayName:f.name});
+   await setDoc(doc(db,"users",c.user.uid),{name:f.name,email:f.email,role:"user",created:Date.now()});
+   await sendEmailVerification(c.user);
+  }else{await sendPasswordResetEmail(auth,f.email);S.msg="Письмо для сброса пароля отправлено."}
+ }catch(x){S.msg=x.message||String(x)}
+ if(!S.user)draw()});
+
+if(live)onAuthStateChanged(auth,async u=>{S.user=u;if(u){await load()}else{S.role="user"}draw()});
+else load().then(draw);
+</script>
+</body>
+</html>
