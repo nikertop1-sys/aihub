@@ -120,8 +120,8 @@ try{
 }catch(e){why="Не удалось загрузить Firebase (нужен интернет и открытие файла в обычном браузере или на GitHub Pages): "+(e.message||e)}
 window.addEventListener("error",e=>{const a=document.getElementById("app");if(a&&!a.innerHTML.trim())a.innerHTML='<div style="padding:30px;color:#f9a8d4">Ошибка: '+String(e.message).replace(/</g,"&lt;")+'</div>'});
 
-/* === ВСТАВЬТЕ СЮДА КОНФИГ ИЗ FIREBASE (Project settings → Your apps → Web) === */
-const CFG={apiKey:"",authDomain:"",projectId:"",appId:""};
+/* === Firebase Web Config проекта ai-hub-c8688 === */
+const CFG={apiKey:"AIzaSyD5ySlNblPQHmr9tkcTxmuY2UQlxueBJy8",authDomain:"ai-hub-c8688.firebaseapp.com",projectId:"ai-hub-c8688",storageBucket:"ai-hub-c8688.firebasestorage.app",messagingSenderId:"487848413856",appId:"1:487848413856:web:947306414f40eeeeead7c5"};
 /* ========================================================================== */
 
 const live=loaded&&["apiKey","authDomain","projectId","appId"].every(k=>CFG[k]);
