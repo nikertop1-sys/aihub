@@ -10,7 +10,7 @@ FIRESTORE RULES (вставьте в Firebase → Firestore → Rules):
 rules_version='2';service cloud.firestore{match /databases/{d}/documents{
  function role(){return get(/databases/$(d)/documents/users/$(request.auth.uid)).data.role}
  match /{c}/{id}{
-  allow read:if request.auth!=null&&c in['news','design','videos','lessons','meta'];
+  allow read:if request.auth!=null&&request.auth.token.email_verified==true&&c in['news','design','videos','lessons','meta'];
   allow write:if c in['news','design','videos','lessons','meta']&&request.auth!=null&&role() in['owner','admin']}
  match /users/{u}{
   allow read:if request.auth.uid==u||role() in['owner','admin'];
@@ -108,13 +108,13 @@ h3{font-size:16px;line-height:1.35;margin:8px 0 6px}
 <body>
 <div id="app"></div>
 <script type="module">
-let initializeApp,getAuth,onAuthStateChanged,signInWithEmailAndPassword,createUserWithEmailAndPassword,sendPasswordResetEmail,sendEmailVerification,updateProfile,signOut,getFirestore,collection,getDocs,query,orderBy,limit,doc,setDoc,getDoc,deleteDoc;
+let initializeApp,getAuth,setPersistence,browserLocalPersistence,onAuthStateChanged,signInWithEmailAndPassword,createUserWithEmailAndPassword,sendPasswordResetEmail,sendEmailVerification,updateProfile,signOut,getFirestore,collection,getDocs,query,orderBy,limit,doc,setDoc,getDoc,deleteDoc;
 let loaded=false,why="";
 try{
  const B="https://www.gstatic.com/firebasejs/10.12.2/";
  const [m1,m2,m3]=await Promise.all([import(B+"firebase-app.js"),import(B+"firebase-auth.js"),import(B+"firebase-firestore.js")]);
  ({initializeApp}=m1);
- ({getAuth,onAuthStateChanged,signInWithEmailAndPassword,createUserWithEmailAndPassword,sendPasswordResetEmail,sendEmailVerification,updateProfile,signOut}=m2);
+ ({getAuth,setPersistence,browserLocalPersistence,onAuthStateChanged,signInWithEmailAndPassword,createUserWithEmailAndPassword,sendPasswordResetEmail,sendEmailVerification,updateProfile,signOut}=m2);
  ({getFirestore,collection,getDocs,query,orderBy,limit,doc,setDoc,getDoc,deleteDoc}=m3);
  loaded=true;
 }catch(e){why="Не удалось загрузить Firebase (нужен интернет и открытие файла в обычном браузере или на GitHub Pages): "+(e.message||e)}
@@ -124,10 +124,10 @@ window.addEventListener("error",e=>{const a=document.getElementById("app");if(a&
 const CFG={apiKey:"",authDomain:"",projectId:"",appId:""};
 /* ========================================================================== */
 
-const live=!!CFG.apiKey&&loaded;
+const live=loaded&&["apiKey","authDomain","projectId","appId"].every(k=>CFG[k]);
 let auth,db;
-if(live){const a=initializeApp(CFG);auth=getAuth(a);db=getFirestore(a)}
-const S={user:live?null:{displayName:"Гость",email:"preview"},role:"user",route:"home",col:false,cat:{},q:"",
+if(live){const a=initializeApp(CFG);auth=getAuth(a);db=getFirestore(a);setPersistence(auth,browserLocalPersistence).catch(()=>{})}
+const S={user:null,profile:null,ready:false,pend:"",err:"",route:"home",col:false,cat:{},q:"",
  data:{news:[],design:[],videos:[],lessons:[]},favs:new Set(),done:new Set(),open:null,upd:null,mode:"in",msg:""};
 const $=s=>document.querySelector(s);
 const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
@@ -149,22 +149,27 @@ const CATS={news:["Все","Модели","Компании","Исследова
 const TITLES={news:"AI News",design:"Design Inspiration",cnews:"Claude News",videos:"Community Videos",learn:"AI Learning",favs:"Избранное",search:"Поиск",settings:"Профиль и настройки"};
 
 /* ---------- данные ---------- */
+const ERR={"auth/invalid-credential":"Неверный email или пароль.","auth/wrong-password":"Неверный email или пароль.","auth/user-not-found":"Неверный email или пароль.","auth/email-already-in-use":"Этот email уже зарегистрирован.","auth/weak-password":"Слишком простой пароль.","auth/invalid-email":"Некорректный email.","auth/too-many-requests":"Слишком много попыток. Попробуйте позже.","auth/network-request-failed":"Нет связи с Firebase. Проверьте интернет.","auth/unauthorized-domain":"Домен сайта не добавлен в Firebase → Authentication → Settings → Authorized domains.","auth/operation-not-allowed":"В Firebase Authentication не включён вход по Email/Password.","permission-denied":"Нет доступа к Firestore: проверьте правила."};
+const errMsg=e=>ERR[e.code]||e.message||String(e);
+async function ensureProfile(u){
+ const r=doc(db,"users",u.uid),s=await getDoc(r);
+ if(!s.exists()){await setDoc(r,{name:S.pend||u.displayName||(u.email||"").split("@")[0],email:u.email,role:"user",created:Date.now()});return(await getDoc(r)).data()}
+ return s.data()}
 async function load(){
- if(!live)return;
  const g=async n=>{try{return(await getDocs(query(collection(db,n),orderBy("date","desc"),limit(80)))).docs.map(d=>({id:d.id,...d.data()}))}catch(e){console.warn(n,e.code||e);return[]}};
  [S.data.news,S.data.design,S.data.videos,S.data.lessons]=await Promise.all(["news","design","videos","lessons"].map(g));
  const u=S.user.uid;
  try{
   S.favs=new Set((await getDocs(collection(db,"users",u,"favs"))).docs.map(d=>d.id));
   S.done=new Set((await getDocs(collection(db,"users",u,"progress"))).docs.map(d=>d.id));
-  const r=await getDoc(doc(db,"users",u));S.role=r.exists()?r.data().role||"user":"user";
   const m=await getDoc(doc(db,"meta","status"));S.upd=m.exists()?m.data().updated:null;
  }catch(e){console.warn(e.code||e)}
 }
+const nm=()=>(S.profile&&S.profile.name)||(S.user&&(S.user.displayName||S.user.email))||"";
 const vids=()=>S.data.videos.filter(v=>Number(v.views)>=10000);
 const cnews=()=>S.data.news.filter(n=>n.kind==="claude");
 const anews=()=>S.data.news.filter(n=>n.kind!=="claude");
-const empty=t=>`<div class="em">${live?"Пока пусто. "+t:"Режим предпросмотра: Firebase не подключён."}</div>`;
+const empty=t=>`<div class="em">Пока пусто. ${t}</div>`;
 
 /* ---------- карточки ---------- */
 const fv=(t,i)=>`<button class="fv ${S.favs.has(t+":"+i.id)?"on":""}" data-a="fav" data-k="${t}:${esc(i.id)}" aria-label="В избранное">♥</button>`;
@@ -188,8 +193,8 @@ home(){
  const d=S.data,n=anews()[0],c=cnews()[0],v=vids()[0],l=d.lessons[0],ds=d.design[0];
  const bc=(r,ic,t,it,hint,cls="c")=>`<div class="card click ${cls}" data-a="go" data-r="${r}" tabindex="0"><div class="hd2"><span class="ico">${ic}</span>${t}</div><h3>${it?esc(it.title):"Пока нет"}</h3><p class="mu" style="padding-right:44px">${it?esc(it.summary||it.channel||it.goal||""):hint}</p><span class="ar">→</span></div>`;
  const h=new Date().getHours(),g=h<5?"Доброй ночи":h<12?"Доброе утро":h<18?"Добрый день":"Добрый вечер";
- return`${live?"":`<div class="ban">${why?esc(why):"Режим предпросмотра: вставьте конфиг Firebase в начале скрипта, чтобы включить вход и данные."}</div>`}
- <h1>${g}, ${esc(S.user.displayName||"друг")}!</h1><p class="mu" style="margin-top:6px;font-size:17px">Вот, что нового сегодня</p>
+ return`
+ <h1>${g}, ${esc(nm())}!</h1><p class="mu" style="margin-top:6px;font-size:17px">Вот, что нового сегодня</p>
  <div class="bento">
   ${bc("news","⚡","Последние новости ИИ",n,"Лента пуста. Первые новости появятся после запуска сборщика.")}
   ${bc("cnews","✦","Обновления Claude",c,"Пока нет. Источник: блог и документация Anthropic.")}
@@ -224,14 +229,15 @@ search(){return head("search","По новостям, дизайну, видео
 settings(){
  const N=JSON.parse(localStorage.getItem("ahn")||'{"ai":true,"claude":true,"videos":true,"lessons":true}'),L={ai:"Новости ИИ",claude:"Обновления Claude",videos:"Новые видео",lessons:"Новые уроки"};
  return head("settings","Аккаунт и уведомления")+`<div class="card" style="max-width:640px">
- <div class="row"><span>Имя</span><b>${esc(S.user.displayName||"—")}</b></div>
- <div class="row"><span>Email</span><b>${esc(S.user.email||"—")}</b></div>
- <div class="row"><span>Роль</span><b>${esc(S.role.toUpperCase())}</b></div>
+ <div class="row"><span>Имя</span><b>${esc(nm())}</b></div>
+ <div class="row"><span>Email</span><b>${esc(S.user.email)}</b></div>
+ <div class="row"><span>Роль</span><b>${S.profile&&S.profile.role?esc(S.profile.role.toUpperCase()):"не определена"}</b></div>
+ <div class="row"><span>Дата регистрации</span><b>${fmt(S.profile&&S.profile.created)||"—"}</b></div>
  <div class="row"><span>Email подтверждён</span><b>${S.user.emailVerified?"да":"нет"}</b></div>
  <h3 style="margin-top:18px">Уведомления</h3>
  ${Object.keys(L).map(k=>`<label class="row"><span>${L[k]}</span><input type="checkbox" data-a="nt" data-k="${k}" ${N[k]?"checked":""}></label>`).join("")}
- ${["owner","admin"].includes(S.role)?`<p class="mu" style="margin-top:14px">Права ${esc(S.role)}: источники, расписание и пользователи управляются в Firebase Console и Cloud Functions.</p>`:""}
- ${live?`<button class="btn g" data-a="out" style="margin-top:18px">Выйти</button>`:""}</div>`}};
+ ${S.profile&&["owner","admin"].includes(S.profile.role)?`<p class="mu" style="margin-top:14px">Права ${esc(S.profile.role)}: источники, расписание и пользователи управляются в Firebase Console и Cloud Functions.</p>`:""}
+ <button class="btn g" data-a="out" style="margin-top:18px">Выйти</button></div>`}};
 
 function res(){
  const q=S.q.trim().toLowerCase();if(!q)return`<div class="em">Введите запрос.</div>`;
@@ -243,7 +249,11 @@ function res(){
 /* ---------- отрисовка ---------- */
 const app=$("#app");
 const on=r=>S.route===r||(r==="settings"&&S.route==="settings");
+function gate(h){app.innerHTML=`<div class="au"><div class="card"><div class="logo"><i></i>AI HUB</div>${h}</div></div>`}
 function draw(){
+ if(!live){gate(`<h3>Firebase не подключён</h3><p class="mu">${esc(why||"В начале скрипта index.html заполните блок CFG (apiKey, authDomain, projectId, appId) из Firebase → Project settings → Your apps → Web.")}</p>`);return}
+ if(!S.ready){gate(`<p class="mu">Загрузка…</p>`);return}
+ if(S.user&&!S.user.emailVerified){gate(`<h3>Подтвердите email</h3><p class="mu">Мы отправили письмо на ${esc(S.user.email)}. Перейдите по ссылке в письме (проверьте «Спам»), затем нажмите кнопку.</p><button class="btn" data-a="chk">Я подтвердил(а) email</button><button class="btn g" data-a="resend">Отправить письмо ещё раз</button><button class="btn g" data-a="out">Выйти</button><p class="msg" role="status">${esc(S.msg||S.err)}</p>`);return}
  if(!S.user){
   const m=S.mode;
   app.innerHTML=`<div class="au"><form class="card" id="af"><div class="logo"><i></i>AI HUB</div>
@@ -257,7 +267,7 @@ function draw(){
   <p class="msg" role="status">${esc(S.msg)}</p></form></div>`;return}
  const ni=NAV.map(([r,t,ic,c])=>`<button class="ni ${c||""} ${on(r)?"on":""}" ${r?`data-a="go" data-r="${r}"`:""}><b>${ic}</b><span class="t">${t}</span></button>`).join("");
  app.innerHTML=`<div class="sh ${S.col?"col":""}"><aside><div class="logo"><i></i><span class="t">AI HUB</span></div>${ni}<div class="sp"></div><button class="ni" data-a="col" aria-label="Свернуть панель"><b>⇤</b><span class="t">Свернуть</span></button></aside>
- <main><div class="tb"><input class="sr" id="gs" placeholder="Поиск по всем разделам…" value="${esc(S.q)}"><span id="clk"></span><div class="av" title="${esc(S.user.email)}">${esc((S.user.displayName||"?").slice(0,2).toUpperCase())}</div></div><section id="v"></section></main></div>
+ <main><div class="tb"><input class="sr" id="gs" placeholder="Поиск по всем разделам…" value="${esc(S.q)}"><span id="clk"></span><div class="av" title="${esc(S.user.email)}">${esc(nm().slice(0,2).toUpperCase())}</div></div><section id="v"></section></main></div>
  <nav class="bn">${BN.map(([r,t,ic])=>`<button class="${S.route===r||(r==="cnews"&&CL.includes(S.route))?"on":""}" data-a="go" data-r="${r}"><b>${ic}</b>${t}</button>`).join("")}</nav>`;
  view();tick()}
 function view(){const v=$("#v");if(v)v.innerHTML=V[S.route]()}
@@ -272,11 +282,13 @@ document.addEventListener("click",async e=>{
  else if(a==="col"){S.col=!S.col;draw()}
  else if(a==="mode"){e.preventDefault();S.mode=t.dataset.v;S.msg="";draw()}
  else if(a==="open"){S.open=S.open===t.dataset.id?null:t.dataset.id;view()}
- else if(a==="out"){await signOut(auth)}
+ else if(a==="out"){S.msg="";S.route="home";await signOut(auth)}
+ else if(a==="chk"){try{await auth.currentUser.reload();await auth.currentUser.getIdToken(true);S.user=auth.currentUser;S.msg=S.user.emailVerified?"":"Email ещё не подтверждён.";if(S.user.emailVerified)await load()}catch(x){S.msg=errMsg(x)}draw()}
+ else if(a==="resend"){try{await sendEmailVerification(auth.currentUser);S.msg="Письмо отправлено повторно."}catch(x){S.msg=errMsg(x)}draw()}
  else if(a==="fav"||a==="done"){
   const set=a==="fav"?S.favs:S.done,k=a==="fav"?t.dataset.k:t.dataset.id,has=set.has(k);
   has?set.delete(k):set.add(k);view();
-  if(live)try{const r=doc(db,"users",S.user.uid,a==="fav"?"favs":"progress",k);has?await deleteDoc(r):await setDoc(r,{t:Date.now()})}catch(x){console.warn(x.code||x)}}
+  try{const r=doc(db,"users",S.user.uid,a==="fav"?"favs":"progress",k);has?await deleteDoc(r):await setDoc(r,{t:Date.now()})}catch(x){console.warn(x.code||x)}}
 });
 document.addEventListener("change",e=>{const t=e.target;if(t.dataset.a!=="nt")return;
  const N=JSON.parse(localStorage.getItem("ahn")||'{"ai":true,"claude":true,"videos":true,"lessons":true}');N[t.dataset.k]=t.checked;localStorage.setItem("ahn",JSON.stringify(N))});
@@ -286,23 +298,26 @@ document.addEventListener("keydown",e=>{
  if(e.target.id==="gs"&&e.key==="Enter"){S.q=e.target.value;S.route="search";draw()}
  if(e.key==="Enter"&&e.target.classList.contains("click"))e.target.click()});
 document.addEventListener("submit",async e=>{
- e.preventDefault();const f=Object.fromEntries(new FormData(e.target));S.msg="";
+ e.preventDefault();if(e.target.id!=="af"||!live)return;const f=Object.fromEntries(new FormData(e.target));S.msg="";
  try{
-  if(!live)throw Error("Firebase не настроен: заполните CFG в начале скрипта.");
   if(S.mode==="in")await signInWithEmailAndPassword(auth,f.email,f.pw);
   else if(S.mode==="up"){
    if(f.pw!==f.pw2)throw Error("Пароли не совпадают.");
    if(!/^(?=.*[A-Za-z])(?=.*\d).{8,}$/.test(f.pw))throw Error("Пароль: от 8 символов, буквы и цифры.");
+   S.pend=f.name.trim();
    const c=await createUserWithEmailAndPassword(auth,f.email,f.pw);
-   await updateProfile(c.user,{displayName:f.name});
-   await setDoc(doc(db,"users",c.user.uid),{name:f.name,email:f.email,role:"user",created:Date.now()});
+   await updateProfile(c.user,{displayName:S.pend});
    await sendEmailVerification(c.user);
+   S.msg="Письмо с подтверждением отправлено на "+f.email+".";
   }else{await sendPasswordResetEmail(auth,f.email);S.msg="Письмо для сброса пароля отправлено."}
- }catch(x){S.msg=x.message||String(x)}
- if(!S.user)draw()});
+ }catch(x){S.msg=errMsg(x)}
+ S.pend="";draw()});
 
-if(live)onAuthStateChanged(auth,async u=>{S.user=u;if(u){await load()}else{S.role="user"}draw()});
-else load().then(draw);
+if(live)onAuthStateChanged(auth,async u=>{
+ S.user=u;S.profile=null;S.err="";
+ if(u){try{S.profile=await ensureProfile(u);if(u.emailVerified)await load()}catch(x){S.err=errMsg(x)}}
+ S.ready=true;draw()});
+else{S.ready=true;draw()}
 </script>
 </body>
 </html>
