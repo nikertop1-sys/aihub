@@ -1,0 +1,12 @@
+{
+  "name": "aihub-collector",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "firebase-admin": "^12.7.0",
+    "rss-parser": "^3.13.0"
+  }
+}
