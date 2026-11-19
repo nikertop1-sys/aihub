@@ -1,0 +1,40 @@
+name: collect
+on:
+  schedule:
+    - cron: "*/15 * * * *"   # новости: AI, Claude, дизайн
+    - cron: "7 * * * *"      # YouTube
+    - cron: "20 5 * * *"     # уроки по программе
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "news | videos | lessons"
+        default: news
+permissions:
+  contents: read
+concurrency:
+  group: collect
+  cancel-in-progress: false
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm install --prefix collector --no-audit --no-fund
+      - name: collect
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
+        run: |
+          MODE="${{ github.event.inputs.mode }}"
+          if [ -z "$MODE" ]; then
+            case "${{ github.event.schedule }}" in
+              "*/15 * * * *") MODE=news;;
+              "7 * * * *") MODE=videos;;
+              *) MODE=lessons;;
+            esac
+          fi
+          node collector/collect.mjs "$MODE"
